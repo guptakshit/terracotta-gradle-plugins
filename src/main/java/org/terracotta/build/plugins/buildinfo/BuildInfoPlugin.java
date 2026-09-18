@@ -59,7 +59,7 @@ public class BuildInfoPlugin implements Plugin<Project> {
       try {
         return g.getBranch();
       } catch (ExecException e) {
-        return null;
+        return "<unknown>";
       }
     })).finalizeValueOnRead();
 
@@ -67,7 +67,7 @@ public class BuildInfoPlugin implements Plugin<Project> {
       try {
         return g.getCommitHash();
       } catch (ExecException e) {
-        return null;
+        return "<unknown>";
       }
     })).finalizeValueOnRead();
 
@@ -80,7 +80,7 @@ public class BuildInfoPlugin implements Plugin<Project> {
                   try {
                     return commitHash + "+" + System.getProperty("user.name") + ":" + g.hash(g.diff(commitHash));
                   } catch (ExecException e) {
-                    return null;
+                    return "<unknown>";
                   }
                 }) :
                 extension.getCommitHash()))
