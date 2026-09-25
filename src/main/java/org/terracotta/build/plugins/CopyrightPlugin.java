@@ -1,6 +1,6 @@
 /*
  * Copyright Terracotta, Inc.
- * Copyright IBM Corp. 2024, 2025
+ * Copyright IBM Corp. 2024, 2026
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,6 +58,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.temporal.ChronoField;
 import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -201,6 +202,8 @@ public class CopyrightPlugin implements Plugin<Project> {
 
 
     private static final Pattern PORCELAIN_Z_STATUS_LINE = Pattern.compile("[ MTADRCU?]{2} (?<file>[^\u0000]+)(?:\u0000(?![ MTADRCU?]{2} )(?<from>[^\u0000]+))?\u0000");
+    private static final Pattern BASE_BRANCH = Pattern.compile("main|release/\\d+(\\.\\d+)*");
+    private static final String REMOTES_PREFIX = "refs/remotes/";
 
     private static Stream<MatchResult> matches(Pattern pattern, CharSequence input) {
       Stream.Builder<MatchResult> builder = Stream.builder();
@@ -222,14 +225,23 @@ public class CopyrightPlugin implements Plugin<Project> {
         return a;
       }).orElseThrow(GradleException::new);
 
+      List<String> baseRefs = Stream.of(git(spec -> spec.args("for-each-ref", "--format=%(refname)", REMOTES_PREFIX)).split("\\R"))
+          .filter(ref -> !ref.isBlank())
+          .filter(ref -> {
+            String remaining = ref.substring(REMOTES_PREFIX.length());
+            String branch = remaining.substring(remaining.indexOf('/') + 1);
+            return BASE_BRANCH.matcher(branch).matches();
+          }).toList();
+      List<Object> revListArgs = Stream.of(
+          Stream.of("--pretty=format:%H %ad %(trailers:key=Copyright-Check,valueonly,separator= )",
+              "--date=format:%Y", "--no-merges", "HEAD", "--not"),
+          baseRefs.stream(),
+          Stream.of(root)).<Object>flatMap(s -> s).toList();
+
       Map<File, Integer> expectedCopyrightYears = Stream.concat(Stream.of(tryGit(
-                              spec -> spec.args("rev-list", "--no-commit-header",
-                                      "--pretty=format:%H %ad %(trailers:key=Copyright-Check,valueonly,separator= )", "--date=format:%Y",
-                                      "--no-merges", "HEAD", "--not", "--remotes=*/main", "--remotes=*/release/*", root),
+                              spec -> spec.args("rev-list", "--no-commit-header").args(revListArgs),
                               //Earlier git versions don't support --no-commit-header, so we'll try again without
-                              spec -> spec.args("rev-list",
-                                      "--pretty=format:%H %ad %(trailers:key=Copyright-Check,valueonly,separator= )", "--date=format:%Y",
-                                      "--no-merges", "HEAD", "--not", "--remotes=*/main", "--remotes=*/release/*", root)).split("\\R"))
+                              spec -> spec.args("rev-list").args(revListArgs)).split("\\R"))
                       .filter(line -> !line.isEmpty() && !line.startsWith("commit")).flatMap(line -> {
                         String[] fields = line.split("\\s+", 3);
                         String commit = fields[0];
